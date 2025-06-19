@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Real-time Speech Recognition and Text-to-Speech</title>
+</head>
+<body>
+    <h1>Audio-only Chat</h1>
+    <button id="startButton">Speak</button>
+    <button id="stopButton">Stop</button>
+    <p id="status" style="border: 1px solid black;">Status</p>
+    <script>
+        const startButton = document.getElementById('startButton');
+        const stopButton = document.getElementById('stopButton');
+        const status = document.getElementById('status');
+        let ws;
+        let recognition;
+        let sessionTimeoutId;
+
+        function startRecognition() {
+            if ('webkitSpeechRecognition' in window) {
+                recognition = new webkitSpeechRecognition();
+                recognition.continuous = true;
+                recognition.interimResults = false;
+
+                recognition.onstart = () => {
+                    status.innerText = 'Speech recognition is on. Speak into the microphone.';
+                    
+                };
+
+                recognition.onresult = (event) => {
+                    let transcript = event.results[event.resultIndex][0].transcript;
+                    //window.speechSynthesis.cancel();
+                    ws.send(transcript);
+                };
+
+                recognition.onerror = (event) => {
+                    status.innerText = 'Speech recognition error: ' + event.error;
+                };
+
+                recognition.onend = () => {
+                    recognition.start();
+                };
+
+                recognition.start();
+            } else {
+                status.innerText = 'Your browser does not support Web Speech API.';
+            }
+        }
+        function resetSessionTimeout() {
+            if (sessionTimeoutId) {
+                clearTimeout(sessionTimeoutId);
+            }
+            
+            //set new timeout
+            sessionTimeoutId = setTimeout(() => {
+                //auto-stop after 2 minutes of inactivity
+                if (recognition) {
+                    recognition.onend = null; //prevent autorestart
+                    recognition.stop();
+                }
+                if (ws) {
+                    ws.close();
+                }
+                status.innerText = 'Session automatically ended after 2 minutes';
+                sessionTimeoutId = null;
+            }, 120000); // 2 min 
+        }
+
+        startButton.onclick = () => {
+            ws = new WebSocket('ws://127.0.0.1:8000/ws/audio');
+            ws.onopen = () => {
+                startRecognition();
+                resetSessionTimeout();
+            };
+            ws.onmessage = (event) => {
+                status.innerText = event.data;
+                //resetSessionTimeout();
+            };
+            ws.onerror = (event) => {
+                console.error('WebSocket error:', event);
+            };
+            //ws.onclose = () => {
+                //recognition.stop();
+                //status.innerText = 'WebSocket disconnected.';
+            //};
+            ws.onclose = () => {
+                if (recognition) {
+                    recognition.onend = null;
+                    recognition.stop();
+                }
+                status.innerText = 'WebSocket disconnected.';
+                // Clear timeout on close
+                if (sessionTimeoutId) {
+                    clearTimeout(sessionTimeoutId);
+                    sessionTimeoutId = null;
+                }
+            };
+        };
+        
+        stopButton.onclick = () => {
+            if (ws) {
+                // Stop the speech recognition
+                if (recognition) {
+                    // Remove auto-restart behavior
+                    recognition.onend = null;
+                    recognition.stop();
+                }
+                
+                //close the socket
+                ws.close();
+                if (sessionTimeoutId) {
+                    clearTimeout(sessionTimeoutId);
+                    sessionTimeoutId = null;
+                }
+                status.innerText = 'Connection closed. Click "Speak" to start a new session.';
+            } else {
+                status.innerText = 'No active connection to close.';
+            }
+        };
+        
+    </script>
+</body>
+</html>
