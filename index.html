@@ -8,6 +8,9 @@
     <button id="startButton">Speak</button>
     <button id="stopButton">Stop</button>
     <p id="status" style="border: 1px solid black;">Status</p>
+
+    <iframe id="streamlitFrame" src="" style="width: 100%; height: 600px; display: none;"></iframe>
+
     <script>
         const startButton = document.getElementById('startButton');
         const stopButton = document.getElementById('stopButton');
@@ -46,6 +49,7 @@
                 status.innerText = 'Your browser does not support Web Speech API.';
             }
         }
+        
         function resetSessionTimeout() {
             if (sessionTimeoutId) {
                 clearTimeout(sessionTimeoutId);
@@ -53,7 +57,7 @@
             
             //set new timeout
             sessionTimeoutId = setTimeout(() => {
-                //auto-stop after 2 minutes of inactivity
+                //stop after 2min
                 if (recognition) {
                     recognition.onend = null; //prevent autorestart
                     recognition.stop();
@@ -63,10 +67,25 @@
                 }
                 status.innerText = 'Session automatically ended after 2 minutes';
                 sessionTimeoutId = null;
-            }, 120000); // 2 min 
+                
+                //stop streamlit when session times out
+                stopStreamlit();
+            }, 120000); 
         }
 
-        startButton.onclick = () => {
+        function startStreamlit() {
+            document.getElementById('streamlitFrame').src = "http://localhost:8501"; 
+            document.getElementById('streamlitFrame').style.display = "block";
+
+        }
+
+        function stopStreamlit() {
+            document.getElementById('streamlitFrame').style.display = "none";
+            document.getElementById('streamlitFrame').src = "";
+        }
+
+        startButton.onclick = async () => {
+            startStreamlit();
             ws = new WebSocket('ws://127.0.0.1:8000/ws/audio');
             ws.onopen = () => {
                 startRecognition();
@@ -78,41 +97,39 @@
             };
             ws.onerror = (event) => {
                 console.error('WebSocket error:', event);
+                status.innerText = 'WebSocket connection failed';
             };
-            //ws.onclose = () => {
-                //recognition.stop();
-                //status.innerText = 'WebSocket disconnected.';
-            //};
+            
             ws.onclose = () => {
                 if (recognition) {
                     recognition.onend = null;
                     recognition.stop();
                 }
                 status.innerText = 'WebSocket disconnected.';
-                // Clear timeout on close
+                //clear timeout on close
                 if (sessionTimeoutId) {
                     clearTimeout(sessionTimeoutId);
                     sessionTimeoutId = null;
                 }
             };
-        };
+        } 
         
         stopButton.onclick = () => {
+            stopStreamlit();
             if (ws) {
-                // Stop the speech recognition
+                //stop the speech recognition
                 if (recognition) {
-                    // Remove auto-restart behavior
+                    //remove autorestart stt
                     recognition.onend = null;
                     recognition.stop();
                 }
                 
-                //close the socket
                 ws.close();
                 if (sessionTimeoutId) {
                     clearTimeout(sessionTimeoutId);
                     sessionTimeoutId = null;
                 }
-                status.innerText = 'Connection closed. Click "Speak" to start a new session.';
+                status.innerText = 'Connection closed. Click "Speak" to start a new session.';                
             } else {
                 status.innerText = 'No active connection to close.';
             }

@@ -1,3 +1,5 @@
+#this file is just for testing librosa not used in production
+
 import sounddevice as sd
 import numpy as np
 import librosa
