@@ -69,12 +69,10 @@
 
                 recognition.onstart = () => {
                     status.innerText = 'Speech recognition is on. Speak into the microphone.';
-                    
                 };
 
                 recognition.onresult = (event) => {
                     let transcript = event.results[event.resultIndex][0].transcript;
-                    //window.speechSynthesis.cancel();
                     ws.send(transcript);
                 };
 
@@ -97,11 +95,9 @@
                 clearTimeout(sessionTimeoutId);
             }
             
-            //set new timeout
             sessionTimeoutId = setTimeout(() => {
-                //stop after 2min
                 if (recognition) {
-                    recognition.onend = null; //prevent autorestart
+                    recognition.onend = null;
                     recognition.stop();
                 }
                 if (ws) {
@@ -109,8 +105,6 @@
                 }
                 status.innerText = 'Session automatically ended after 2 minutes';
                 sessionTimeoutId = null;
-                
-                //stop streamlit when session times out
                 stopStreamlit();
             }, 120000); 
         }
@@ -118,7 +112,6 @@
         function startStreamlit() {
             document.getElementById('streamlitFrame').src = "http://localhost:8501"; 
             document.getElementById('streamlitFrame').style.display = "block";
-
         }
 
         function stopStreamlit() {
@@ -136,7 +129,6 @@
             };
             ws.onmessage = (event) => {
                 status.innerText = event.data;
-                //resetSessionTimeout();
             };
             ws.onerror = (event) => {
                 console.error('WebSocket error:', event);
@@ -149,7 +141,6 @@
                     recognition.stop();
                 }
                 status.innerText = 'WebSocket disconnected.';
-                //clear timeout on close
                 if (sessionTimeoutId) {
                     clearTimeout(sessionTimeoutId);
                     sessionTimeoutId = null;
@@ -161,9 +152,7 @@
             stopStreamlit();
             camera.stop();
             if (ws) {
-                //stop the speech recognition
                 if (recognition) {
-                    //remove autorestart stt
                     recognition.onend = null;
                     recognition.stop();
                 }
@@ -184,75 +173,60 @@
         });
 
         holistic.setOptions({
-        modelComplexity: 1,
-        smoothLandmarks: true,
-        enableSegmentation: false,
-        refineFaceLandmarks: true,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5
+            modelComplexity: 1,
+            smoothLandmarks: true,
+            enableSegmentation: false,
+            refineFaceLandmarks: true,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
         });
 
         holistic.onResults(results => {
-        canvasCtx.save();
-        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-        canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.restore();
 
-        if (results.poseLandmarks) {
-            drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, { color: '#00FF00', lineWidth: 4 });
-        }
-        if (results.faceLandmarks) {
-            drawConnectors(canvasCtx, results.faceLandmarks, FACEMESH_TESSELATION, { color: '#C0C0C070', lineWidth: 1 });
-        }
-        if (results.leftHandLandmarks) {
-            drawConnectors(canvasCtx, results.leftHandLandmarks, HAND_CONNECTIONS, { color: '#FF0000', lineWidth: 2 });
-        }
-        if (results.rightHandLandmarks) {
-            drawConnectors(canvasCtx, results.rightHandLandmarks, HAND_CONNECTIONS, { color: '#0000FF', lineWidth: 2 });
-        }
+            let feedback = [];
 
-        canvasCtx.restore();
-
-        let feedback = [];
-
-        //posture
-        if (results.poseLandmarks) {
-            const leftShoulder = results.poseLandmarks[11];
-            const rightShoulder = results.poseLandmarks[12];
-            const shoulderTilt = Math.abs(leftShoulder.y - rightShoulder.y);
-            if (shoulderTilt > 0.05) {
-            feedback.push("🤡 Stand upright: your shoulders seem tilted.");
-            } else {
-            feedback.push("✅ Good posture.");
+            //posture
+            if (results.poseLandmarks) {
+                const leftShoulder = results.poseLandmarks[11];
+                const rightShoulder = results.poseLandmarks[12];
+                const shoulderTilt = Math.abs(leftShoulder.y - rightShoulder.y);
+                if (shoulderTilt > 0.05) {
+                    feedback.push("🤡 Stand upright: your shoulders seem tilted.");
+                } else {
+                    feedback.push("✅ Good posture.");
+                }
             }
-        }
 
-        // hand movemtn
-        const handsVisible = results.leftHandLandmarks || results.rightHandLandmarks;
-        if (!handsVisible) {
-            feedback.push("🤡 Try to use more hand gestures");
-        } else {
-            feedback.push("✅ Hands detected good");
-        }
+            // hand movement
+            const handsVisible = results.leftHandLandmarks || results.rightHandLandmarks;
+            if (!handsVisible) {
+                feedback.push("🤡 Try to use more hand gestures");
+            } else {
+                feedback.push("✅ Hands detected good");
+            }
 
-        // mouth open(indicates speaking)
-        if (results.faceLandmarks) {
-            const upperLip = results.faceLandmarks[13];
-            const lowerLip = results.faceLandmarks[14];
-            const mouthOpen = (lowerLip.y - upperLip.y) > 0.015;
-            feedback.push(mouthOpen ? "✅ You're likely speaking." : "🤡 Try to speak up or vary expressions.");
-        }
+            // mouth open (indicates speaking)
+            if (results.faceLandmarks) {
+                const upperLip = results.faceLandmarks[13];
+                const lowerLip = results.faceLandmarks[14];
+                const mouthOpen = (lowerLip.y - upperLip.y) > 0.015;
+                feedback.push(mouthOpen ? "✅ You're likely speaking." : "🤡 Try to speak up or vary expressions.");
+            }
 
-        feedbackEl.innerHTML = feedback.join("<br>");
+            feedbackEl.innerHTML = feedback.join("<br>");
         });
 
         const camera = new Camera(videoElement, {
-        onFrame: async () => {
-            await holistic.send({ image: videoElement });
-        },
-        width: 640,
-        height: 480
+            onFrame: async () => {
+                await holistic.send({ image: videoElement });
+            },
+            width: 640,
+            height: 480
         });
-        
     </script>
 </body>
 </html>
