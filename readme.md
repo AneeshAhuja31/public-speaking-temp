@@ -8,7 +8,7 @@
 1. Clone this repository:
 ```bash
 git clone https://github.com/yourusername/WebSockets_FastApi.git
-cd WebSockets_FastApi/medium_article
+cd public-speaking-temp
 ```
 
 2. Install the required dependencies:
