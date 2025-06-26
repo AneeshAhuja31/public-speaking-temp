@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Real-time Speech Recognition and Text-to-Speech</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f7f6;
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+            font-size: 2.5rem;
+            text-align: center;
+        }
+
+        button {
+            padding: 12px 25px;
+            margin: 0 10px 20px 10px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1.1rem;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        #startButton {
+            background-color: #28a745;
+            color: white;
+        }
+
+        #startButton:hover {
+            background-color: #218838;
+            transform: translateY(-2px);
+        }
+
+        #stopButton {
+            background-color: #dc3545;
+            color: white;
+        }
+
+        #stopButton:hover {
+            background-color: #c82333;
+            transform: translateY(-2px);
+        }
+
+        #status {
+            margin-top: 10px;
+            padding: 15px;
+            border: 1px solid #a0a0a0;
+            border-radius: 8px;
+            background-color: #e9ecef;
+            color: #555;
+            font-size: 1rem;
+            text-align: center;
+            width: 100%;
+            max-width: 700px;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .container {
+            display: flex;
+            flex-direction: row;
+            flex-wrap: wrap; /* Allows wrapping on smaller screens */
+            gap: 25px;
+            margin-top: 30px;
+            width: 100%;
+            justify-content: center;
+            align-items: flex-start;
+        }
+
+        .video-section, .streamlit-section {
+            background-color: #ffffff;
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            flex: 1; /* Distributes space equally */
+            min-width: 320px; /* Minimum width before wrapping */
+            max-width: 680px; /* Max width to prevent overly wide sections */
+        }
+
+        canvas {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            background-color: #000; /* Black background for video */
+        }
+
+        #feedback {
+            margin-top: 15px;
+            font-size: 1.1rem;
+            color: #34495e;
+            background-color: #f8fcfc;
+            border: 1px dashed #aed6f1;
+            padding: 15px;
+            border-radius: 8px;
+            width: 100%;
+            box-sizing: border-box; /* Include padding in width calculation */
+            line-height: 1.6;
+        }
+
+        #streamlitFrame {
+            width: 100%;
+            height: 480px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background-color: #f0f2f6; /* Light background for the iframe */
+        }
+
+        .input_video {
+            display: none; /* Keep video element hidden */
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 1200px) {
+            .container {
+                flex-direction: column;
+                align-items: center;
+            }
+            .video-section, .streamlit-section {
+                width: 90%;
+                max-width: 640px; /* Max width for single column */
+            }
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2rem;
+            }
+            button {
+                padding: 10px 20px;
+                font-size: 1rem;
+                margin-bottom: 15px;
+            }
+            #status, #feedback {
+                font-size: 0.95rem;
+                padding: 12px;
+            }
+            canvas, #streamlitFrame {
+                width: 100%;
+                height: auto; /* Adjust height automatically */
+            }
+        }
+
+        @media (max-width: 480px) {
+            body {
+                padding: 15px;
+            }
+            h1 {
+                font-size: 1.8rem;
+            }
+            button {
+                width: 80%;
+                margin: 0 auto 15px auto;
+                display: block;
+            }
+            .container {
+                gap: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>Audio-only Chat</h1>
+    <div>
+        <button id="startButton">Speak</button>
+        <button id="stopButton">Stop</button>
+    </div>
+    <p id="status">Status</p>
+
+    <div class="container">
+        <div class="video-section">
+            <h2>Video Analysis</h2>
+            <video class="input_video" style="display: none;"></video>
+            <canvas class="output_canvas" width="640px" height="480px"></canvas>
+            <div id="feedback"></div>
+        </div>
+        
+        <div class="streamlit-section">
+            <h2>Streamlit App</h2>
+            <iframe id="streamlitFrame" src="" style="display: none;"></iframe>
+        </div>
+    </div>
+
+    <script>
+        const startButton = document.getElementById('startButton');
+        const stopButton = document.getElementById('stopButton');
+        const status = document.getElementById('status');
+        const videoElement = document.getElementsByClassName('input_video')[0];
+        const canvasElement = document.getElementsByClassName('output_canvas')[0];
+        const canvasCtx = canvasElement.getContext('2d');
+        const feedbackEl = document.getElementById("feedback")
+        let ws;
+        let recognition;
+        let sessionTimeoutId;
+
+        function startRecognition() {
+            if ('webkitSpeechRecognition' in window) {
+                recognition = new webkitSpeechRecognition();
+                recognition.continuous = true;
+                recognition.interimResults = false;
+
+                recognition.onstart = () => {
+                    status.innerText = 'Speech recognition is on. Speak into the microphone.';
+                };
+
+                recognition.onresult = (event) => {
+                    let transcript = event.results[event.resultIndex][0].transcript;
+                    ws.send(transcript);
+                };
+
+                recognition.onerror = (event) => {
+                    status.innerText = 'Speech recognition error: ' + event.error;
+                };
+
+                recognition.onend = () => {
+                    recognition.start(); // Restart recognition
+                };
+
+                recognition.start();
+            } else {
+                status.innerText = 'Your browser does not support Web Speech API.';
+            }
+        }
+        
+        function resetSessionTimeout() {
+            if (sessionTimeoutId) {
+                clearTimeout(sessionTimeoutId);
+            }
+            
+            sessionTimeoutId = setTimeout(() => {
+                if (recognition) {
+                    recognition.onend = null; // Prevent auto-restart on timeout
+                    recognition.stop();
+                }
+                if (ws) {
+                    ws.close();
+                }
+                status.innerText = 'Session automatically ended after 2 minutes of inactivity.';
+                sessionTimeoutId = null;
+                stopStreamlit();
+            }, 120000); // 2 minutes
+        }
+
+        function startStreamlit() {
+            document.getElementById('streamlitFrame').src = "http://localhost:8501"; 
+            document.getElementById('streamlitFrame').style.display = "block";
+        }
+
+        function stopStreamlit() {
+            document.getElementById('streamlitFrame').style.display = "none";
+            document.getElementById('streamlitFrame').src = ""; // Clear src to stop content
+        }
+
+        startButton.onclick = async () => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                status.innerText = 'Connection already active. Click "Stop" to end current session.';
+                return;
+            }
+            startStreamlit();
+            camera.start();
+            ws = new WebSocket('ws://127.0.0.1:8000/ws/audio');
+            ws.onopen = () => {
+                startRecognition();
+                resetSessionTimeout();
+            };
+            ws.onmessage = (event) => {
+                status.innerText = event.data;
+                resetSessionTimeout(); // Reset timeout on new message
+            };
+            ws.onerror = (event) => {
+                console.error('WebSocket error:', event);
+                status.innerText = 'WebSocket connection failed. Ensure the backend server is running.';
+            };
+            
+            ws.onclose = () => {
+                if (recognition) {
+                    recognition.onend = null; // Prevent auto-restart
+                    recognition.stop();
+                }
+                status.innerText = 'WebSocket disconnected.';
+                if (sessionTimeoutId) {
+                    clearTimeout(sessionTimeoutId);
+                    sessionTimeoutId = null;
+                }
+            };
+        } 
+        
+        stopButton.onclick = () => {
+            stopStreamlit();
+            camera.stop();
+            if (ws) {
+                if (recognition) {
+                    recognition.onend = null; // Prevent auto-restart when manually stopped
+                    recognition.stop();
+                }
+                
+                ws.close();
+                if (sessionTimeoutId) {
+                    clearTimeout(sessionTimeoutId);
+                    sessionTimeoutId = null;
+                }
+                status.innerText = 'Connection closed. Click "Speak" to start a new session.';               
+            } else {
+                status.innerText = 'No active connection to close.';
+            }
+        };
+
+        const holistic = new Holistic({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`
+        });
+
+        holistic.setOptions({
+            modelComplexity: 1,
+            smoothLandmarks: true,
+            enableSegmentation: false,
+            refineFaceLandmarks: true,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        holistic.onResults(results => {
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.restore();
+
+            let feedback = [];
+
+            // Posture
+            if (results.poseLandmarks) {
+                const leftShoulder = results.poseLandmarks[11];
+                const rightShoulder = results.poseLandmarks[12];
+                if (leftShoulder && rightShoulder) { // Ensure landmarks are detected
+                    const shoulderTilt = Math.abs(leftShoulder.y - rightShoulder.y);
+                    if (shoulderTilt > 0.05) {
+                        feedback.push("🤡 *Stand upright:* Your shoulders seem tilted.");
+                    } else {
+                        feedback.push("✅ *Good posture.*");
+                    }
+                } else {
+                    feedback.push("ℹ Stand further back to detect posture.");
+                }
+            } else {
+                feedback.push("ℹ No pose detected for posture analysis.");
+            }
+
+            // Hand movement
+            const handsVisible = results.leftHandLandmarks || results.rightHandLandmarks;
+            if (!handsVisible) {
+                feedback.push("🤡 *Try to use more hand gestures* for expression.");
+            } else {
+                feedback.push("✅ *Hands detected:* Good use of gestures.");
+            }
+
+            // Mouth open (indicates speaking)
+            if (results.faceLandmarks) {
+                const upperLip = results.faceLandmarks[13];
+                const lowerLip = results.faceLandmarks[14];
+                if (upperLip && lowerLip) { // Ensure landmarks are detected
+                    const mouthOpen = (lowerLip.y - upperLip.y) > 0.015; // Threshold for mouth open
+                    feedback.push(mouthOpen ? "✅ *You're likely speaking." : "🤡 **Try to speak up* or vary expressions if you're speaking.");
+                } else {
+                    feedback.push("ℹ No face detected for mouth analysis.");
+                }
+            } else {
+                feedback.push("ℹ No face detected for mouth analysis.");
+            }
+
+            feedbackEl.innerHTML = feedback.join("<br>");
+        });
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await holistic.send({ image: videoElement });
+            },
+            width: 640,
+            height: 480
+        });
+    </script>
+</body>
+</html>
